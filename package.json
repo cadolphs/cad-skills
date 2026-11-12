@@ -1,0 +1,13 @@
+{
+  "name": "cad-skills",
+  "version": "0.1.0",
+  "description": "Clemens Adolphs's agent skills and the CLIs behind them.",
+  "type": "module",
+  "bin": { "cad-skills": "bin/cad-skills.mjs" },
+  "files": ["bin", "skills", "README.md"],
+  "engines": { "node": ">=20" },
+  "scripts": { "test": "node --test" },
+  "repository": { "type": "git", "url": "git+https://github.com/cadolphs/cad-skills.git" },
+  "license": "MIT",
+  "private": true
+}
