@@ -235,7 +235,7 @@ const init = ({ gh, cwd, flags, log }) => {
   // AGENTS.md is always safe to rewrite: the pointer is only ever appended.
   const plan = planFiles(files, current, flags.force === true).map((step) =>
     step.path === 'AGENTS.md' && step.action === 'skip'
-      ? { ...step, action: 'write', content: files['AGENTS.md'] }
+      ? { path: step.path, action: 'write', content: files['AGENTS.md'] }
       : step,
   );
   plan.forEach((step) => {
