@@ -127,3 +127,27 @@ test('templates carry no unfilled placeholders other than the two init fills', (
   const placeholders = [...new Set(text.match(/\{\{[A-Z_]+\}\}/g))].sort();
   assert.deepEqual(placeholders, ['{{CLI}}', '{{PROJECT_URL}}']);
 });
+
+test('an item that is not visible yet is looked up again before giving up', () => {
+  const nodes = [];
+  const { gh } = fakeGh(nodes);
+  const waits = [];
+  const wait = (ms) => {
+    waits.push(ms);
+    nodes.push(draft('A', 'Just added', 'Proposed'));
+  };
+  const { code, lines } = quiet(() => runBoard(['show', 'just added'], { gh, cwd: repoWithConfig(), wait }));
+  assert.equal(code, 0);
+  assert.equal(waits.length, 1);
+  assert.match(lines[0], /# Just added/);
+});
+
+test('an item that never appears is reported after the retries', () => {
+  const waits = [];
+  const { code, lines } = quiet(() =>
+    runBoard(['show', 'ghost'], { gh: fakeGh([]).gh, cwd: repoWithConfig(), wait: (ms) => waits.push(ms) }),
+  );
+  assert.equal(code, 1);
+  assert.equal(waits.length, 2);
+  assert.match(lines.join(''), /no item matches "ghost"/);
+});

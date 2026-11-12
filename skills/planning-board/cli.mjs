@@ -70,11 +70,20 @@ const requireStatus = (board, name) => {
   return option;
 };
 
-const requireItem = (board, ref) => {
+const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+// Loads the board and finds one item. GitHub can take a few seconds to return
+// an item that was just added, so a miss is retried before it is reported.
+const loadBoardAndItem = ({ gh, config, wait }, ref, attempts = 3) => {
   if (!ref) throw new Error('which item? Pass its list number or part of its title.');
+  const board = loadBoard(gh, config);
   const { item, error } = findItem(board.items, ref);
-  if (error) throw new Error(error);
-  return item;
+  if (item) return { board, item };
+  if (attempts > 1 && error.startsWith('no item matches')) {
+    wait(2000);
+    return loadBoardAndItem({ gh, config, wait }, ref, attempts - 1);
+  }
+  throw new Error(error);
 };
 
 const requireDraft = (item) => {
@@ -120,8 +129,8 @@ const commands = {
     );
   },
 
-  show: ({ gh, config, positional, out }) => {
-    const item = requireItem(loadBoard(gh, config), positional[0]);
+  show: ({ positional, out, ...ctx }) => {
+    const { item } = loadBoardAndItem(ctx, positional[0]);
     out(
       item,
       `# ${item.title}\nStatus: ${item.status}${item.url ? `\n${item.url}` : ''}\n\n${item.body}`,
@@ -138,9 +147,9 @@ const commands = {
     out({ id: created.id, status: first.name, title }, `added "${title}" as ${first.name}`);
   },
 
-  move: ({ gh, config, positional, flags, out, today }) => {
-    const board = loadBoard(gh, config);
-    const item = requireItem(board, positional[0]);
+  move: ({ positional, flags, out, today, ...ctx }) => {
+    const { gh, config } = ctx;
+    const { board, item } = loadBoardAndItem(ctx, positional[0]);
     const status = requireStatus(board, positional[1]);
     const needs = moveRequirements(status.name, flags, today, config.stages);
     if (needs.error) throw new Error(needs.error);
@@ -154,8 +163,9 @@ const commands = {
     );
   },
 
-  body: ({ gh, config, positional, flags, out }) => {
-    const item = requireDraft(requireItem(loadBoard(gh, config), positional[0]));
+  body: ({ positional, flags, out, ...ctx }) => {
+    const { gh } = ctx;
+    const item = requireDraft(loadBoardAndItem(ctx, positional[0]).item);
     const body = readBody(flags);
     if (body === undefined) throw new Error('body needs --body-file <path> or --body "<text>"');
     setDraftBody(gh, item.contentId, body);
@@ -256,7 +266,10 @@ const USAGE = `usage: ${CLI} <command>
 <item> is the number from list, or a unique part of the title. Add --json for JSON.
 The board is read from .github/board.json: { "owner": "<login>", "project": <number> }`;
 
-export const runBoard = (argv, { gh = createGh(), cwd = process.cwd() } = {}) => {
+export const runBoard = (
+  argv,
+  { gh = createGh(), cwd = process.cwd(), wait = pause } = {},
+) => {
   const [name, ...rest] = argv;
   const { positional, flags } = parseArgs(rest);
   const out = (value, text) => console.log(flags.json ? JSON.stringify(value, null, 2) : text);
@@ -271,6 +284,7 @@ export const runBoard = (argv, { gh = createGh(), cwd = process.cwd() } = {}) =>
     }
     commands[name]({
       gh,
+      wait,
       config: loadConfig(cwd),
       positional,
       flags,
